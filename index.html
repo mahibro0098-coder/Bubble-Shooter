@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>বাবল শুটার - লেভেল সংস্করণ</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&display=swap');
+        :root {
+            --bg-dark: #1a0f2e; --bg-light: #2c1a4d; --border-color: #4a2f8a;
+            --shooter-area-bg: #1e103a; --gold-color: #f1c40f; --text-light: #f0e8ff;
+        }
+        body {
+            font-family: 'Hind Siliguri', sans-serif; display: flex; justify-content: center;
+            align-items: center; height: 100vh; margin: 0; background-color: var(--bg-dark);
+            overflow: hidden; touch-action: none;
+        }
+        #game-wrapper {
+            width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;
+        }
+        #game-container {
+            width: 95vw; max-width: 420px; aspect-ratio: 9 / 16; display: flex; flex-direction: column;
+            background: var(--bg-dark); border: 5px solid var(--border-color); border-radius: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0,0,0,0.3);
+            position: relative; overflow: hidden;
+        }
+        #canvas-container { width: 100%; height: 85%; position: relative; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #backgroundCanvas { z-index: 1; }
+        #gameCanvas { z-index: 2; background: transparent; }
+        
+        #game-stats {
+            position: absolute; top: 10px; left: 10px; right: 10px;
+            display: flex; justify-content: space-between;
+            background: rgba(0,0,0,0.3); padding: 5px 15px;
+            border-radius: 15px; color: var(--text-light); z-index: 5;
+            font-size: clamp(0.8em, 4vw, 1em); font-weight: bold;
+            pointer-events: none;
+        }
+        
+        #ui-bar {
+            width: 100%; height: 15%; background-color: var(--shooter-area-bg);
+            border-top: 4px solid var(--border-color); border-radius: 0 0 25px 25px;
+            display: flex; justify-content: space-around; align-items: center; position: relative; z-index: 3;
+        }
+        .ui-button {
+            width: 50px; height: 50px; border-radius: 50%; cursor: pointer; display: flex;
+            justify-content: center; align-items: center; transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+        .ui-button:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.5); }
+        .ui-button:active { transform: scale(0.9); }
+        #restart-btn { background: radial-gradient(circle, #ffd95b, #e6a800); border: 3px solid #fff5c8; }
+        #restart-btn svg { width: 60%; height: 60%; color: #8c5a00; }
+        #shooter-cradle { width: 70px; height: 70px; position: relative; }
+        #swap-btn { background: radial-gradient(circle, #e0a0ff, #9932cc); border: 3px solid #f0d8ff; position: relative; }
+        #swap-btn::after {
+            content: 'বদল'; position: absolute; bottom: -18px; color: var(--text-light);
+            font-size: 12px; font-weight: bold;
+        }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7);
+            color: white; display: none; justify-content: center; align-items: center;
+            flex-direction: column; text-align: center; z-index: 10;
+        }
+        #overlay h2 { font-size: clamp(2.5em, 10vw, 4em); text-shadow: 3px 3px 8px #000; margin: 0; }
+        #overlay p { font-size: clamp(1em, 5vw, 1.5em); margin: 10px 0 20px 0; }
+        #overlay button {
+            padding: 15px 30px; font-size: clamp(1em, 5vw, 1.2em); font-family: 'Hind Siliguri', sans-serif;
+            font-weight: bold; cursor: pointer; border: none; background-color: var(--gold-color);
+            color: var(--bg-dark); border-radius: 15px; transition: background-color 0.3s; text-transform: uppercase;
+        }
+        #overlay button:hover { background-color: #ffde2f; }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-container">
+            <div id="canvas-container">
+                <div id="game-stats">
+                    <div>স্কোর: <span id="score-val">0</span></div>
+                    <div>লেভেল: <span id="level-val">1</span></div>
+                </div>
+                <canvas id="backgroundCanvas"></canvas>
+                <canvas id="gameCanvas"></canvas>
+            </div>
+            <div id="ui-bar">
+                <div id="restart-btn" class="ui-button" title="পুনরায় শুরু করুন">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"></path></svg>
+                </div>
+                <div id="shooter-cradle"></div>
+                <div id="swap-btn" class="ui-button" title="বাবল বদল করুন (S)"></div>
+            </div>
+            <div id="overlay">
+                <h2 id="overlay-title">গেম ওভার!</h2>
+                <p id="overlay-score">আপনার স্কোর: 0</p>
+                <button id="overlay-button">আবার খেলুন</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const gameCanvas = document.getElementById('gameCanvas'), gctx = gameCanvas.getContext('2d');
+    const backgroundCanvas = document.getElementById('backgroundCanvas'), bctx = backgroundCanvas.getContext('2d');
+    const gameContainer = document.getElementById('game-container');
+    const restartBtn = document.getElementById('restart-btn'), swapBtn = document.getElementById('swap-btn');
+    const overlay = document.getElementById('overlay'), overlayTitle = document.getElementById('overlay-title');
+    const overlayScore = document.getElementById('overlay-score'), overlayButton = document.getElementById('overlay-button');
+    const scoreEl = document.getElementById('score-val'), levelEl = document.getElementById('level-val');
+
+    let BUBBLE_RADIUS, COLS, ROWS, SHOOTER_X, SHOOTER_Y;
+    const BASE_COLS = 11, BUBBLE_SPEED_FACTOR = 0.4;
+    const COLORS = { b: '#3498db', r: '#e74c3c', g: '#2ecc71', y: '#f1c40f', c: '#1abc9c', m: '#9b59b6', s: '#847c87' };
+    const COLOR_KEYS = Object.keys(COLORS).filter(k => k !== 's');
+
+    const LEVELS = [
+        { layout: ["rgybmcr", " rgybmcr ", "rgybmcr", " rgybmcr "] },
+        { layout: ["b c b c ", " c b c b", "b c b c ", " c b c b", "y m y m ", " m y m y", "y m y m "] },
+        { layout: ["s s s s s s", " r s b s g s ", "r s b s g s", " s s s s s s ", "r b g c m y"] },
+        { layout: ["  g g g  ", " g s s s g ", "b s r r s b", " b s r s b ", "c s s s s c", " c m m c "] },
+        { layout: ["r c s b m", " y s g c r ", "s b m y s", " g c r b s ", "b m y s g", " c r b m s "] },
+    ];
+
+    let grid, playerBubble, nextBubble, firedBubble;
+    let score = 0, currentLevel = 1;
+    let isShooting = false, gameOver = false, isAiming = false; // New state: isAiming
+    let targetAimAngle = -Math.PI / 2;
+    let shotsSinceRowAdded = 0, shotsPerRow = 5;
+    let particles = [], fallingBubbles = [];
+    let animationFrameId;
+
+    // Sounds (unchanged)
+    const popSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU3LjgyLjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAA//uQZAU8AAAACAAADSAAAAQARgAm கிடைத்தது//uQZAUoAAAAEAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AD/gcAZs//uQZAikgAAAACAAADSAAAAQARgAmAAAA//uQZAgsgAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MGs//uQZAg4gAAAAAIAAANIAAAAQARgAmAAAA//uQZAgogAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MAB//uQZAe8gAAAAAIAAANIAAAAQARgAmAAAA//uQZAe0gAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gb8R4MAB");
+    const shootSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU3LjgyLjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAA//uQZAU8AAAACAAADSAAAAQARgAm கிடைத்தது//uQZAUoAAAAEAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AD/gcAZs//uQZAikgAAAACAAADSAAAAQARgAmAAAA//uQZAgsgAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MGs//uQZAg4gAAAAAIAAANIAAAAQARgAmAAAA//uQZAgogAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MAB//uQZAe8gAAAAAIAAANIAAAAQARgAmAAAA//uQZAe0gAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gb8R4MAB");
+    const swapSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU3LjgyLjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAA//uQZAU8AAAACAAADSAAAAQARgAm கிடைத்தது//uQZAUoAAAAEAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AD/gcAZs//uQZAikgAAAACAAADSAAAAQARgAmAAAA//uQZAgsgAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MGs//uQZAg4gAAAAAIAAANIAAAAQARgAmAAAA//uQZAgogAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MAB//uQZAe8gAAAAAIAAANIAAAAQARgAmAAAA//uQZAe0gAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gb8R4MAB");
+    popSound.volume = 0.5; shootSound.volume = 0.2; swapSound.volume = 0.2;
+
+    function init() {
+        resizeGame();
+        bctx.fillStyle = '#1a0f2e'; bctx.fillRect(0,0, bctx.canvas.width, bctx.canvas.height);
+        
+        startGame();
+        
+        // NEW Event Listeners for Drag-and-Release
+        gameContainer.addEventListener('pointerdown', handleAimStart);
+        gameContainer.addEventListener('pointermove', handleAimMove);
+        gameContainer.addEventListener('pointerup', handleAimEnd);
+        gameContainer.addEventListener('pointerleave', handleAimEnd); // Handle leaving the screen
+
+        window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 's') swapBubbles(); });
+        restartBtn.addEventListener('click', () => { score = 0; currentLevel = 1; startGame(); });
+        swapBtn.addEventListener('click', swapBubbles);
+        overlayButton.addEventListener('click', handleOverlayClick);
+        window.addEventListener('resize', resizeGame);
+    }
+    
+    // NEW CONTROL HANDLERS
+    function handleAimStart(e) {
+        if (gameOver || isShooting || e.target.closest('#ui-bar')) return;
+        isAiming = true;
+        updateAimAngle(e);
+    }
+
+    function handleAimMove(e) {
+        if (!isAiming) return;
+        updateAimAngle(e);
+    }
+
+    function handleAimEnd(e) {
+        if (!isAiming) return;
+        isAiming = false;
+        shootBubble();
+    }
+    
+    function updateAimAngle(e) {
+        const rect = gameCanvas.getBoundingClientRect();
+        const pointerX = e.clientX - rect.left;
+        const pointerY = e.clientY - rect.top;
+
+        if (pointerY > SHOOTER_Y) return;
+
+        const angle = Math.atan2(pointerY - SHOOTER_Y, pointerX - SHOOTER_X);
+        targetAimAngle = Math.max(-Math.PI + 0.1, Math.min(-0.1, angle));
+    }
+
+    // UPDATED Aim Line Drawing
+    function drawAimLine() {
+        if (isShooting || !playerBubble || !isAiming) return; // Only draw when aiming
+        gctx.save();
+        
+        const previewBubble = {x: SHOOTER_X, y: SHOOTER_Y, dx: Math.cos(targetAimAngle), dy: Math.sin(targetAimAngle)};
+        
+        // Dotted line
+        gctx.beginPath();
+        gctx.moveTo(SHOOTER_X, SHOOTER_Y);
+        gctx.lineTo(SHOOTER_X + previewBubble.dx * 1000, SHOOTER_Y + previewBubble.dy * 1000);
+        gctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+        gctx.lineWidth = 2;
+        gctx.setLineDash([4, 8]);
+        gctx.stroke();
+        gctx.setLineDash([]);
+        
+        gctx.restore();
+    }
+    
+    function shootBubble() {
+        if (isShooting || gameOver || !playerBubble) return;
+        isShooting = true;
+        shootSound.play();
+        const speed = BUBBLE_RADIUS * BUBBLE_SPEED_FACTOR;
+        firedBubble = {
+            x: SHOOTER_X, y: SHOOTER_Y, color: playerBubble.color,
+            dx: Math.cos(targetAimAngle) * speed,
+            dy: Math.sin(targetAimAngle) * speed
+        };
+        playerBubble = null;
+    }
+    
+    function startGame() {
+        if(animationFrameId) cancelAnimationFrame(animationFrameId);
+        gameOver = false; isShooting = false; isAiming = false; firedBubble = null;
+        particles = []; fallingBubbles = []; shotsSinceRowAdded = 0;
+        targetAimAngle = -Math.PI / 2;
+        overlay.style.display = 'none';
+        setupLevel(); 
+        createPlayerBubbles(); 
+        gameLoop();
+    }
+    
+    function gameLoop() {
+        animationFrameId = requestAnimationFrame(gameLoop);
+        updateFiredBubble(); updateGridAnimations();
+        updateFallingBubbles(); updateParticles();
+        gctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+        drawGrid(); drawFallingBubbles(); drawParticles();
+        drawShooter(); drawHUD(); drawAimLine(); drawGameOverLine();
+    }
+
+    function handleOverlayClick() {
+        if (overlayButton.dataset.action === 'next-level') {
+            currentLevel++;
+            showLevelStartScreen();
+        } else {
+            score = 0;
+            currentLevel = 1;
+            startGame();
+        }
+    }
+
+    function showLevelStartScreen() {
+        overlayTitle.textContent = `লেভেল ${currentLevel}`;
+        overlayScore.style.display = 'none';
+        overlayButton.style.display = 'none';
+        overlay.style.display = 'flex';
+        setTimeout(() => {
+            startGame();
+        }, 1500);
+    }
+    
+    // --- All other functions (game logic, drawing, etc.) remain mostly the same ---
+    
+    function resizeGame() {
+        const rect = gameContainer.getBoundingClientRect();
+        gameCanvas.width = backgroundCanvas.width = rect.width;
+        gameCanvas.height = backgroundCanvas.height = rect.height * 0.85; // canvas container height
+        COLS = BASE_COLS; BUBBLE_RADIUS = gameCanvas.width / (COLS * 2);
+        ROWS = Math.floor((gameCanvas.height - BUBBLE_RADIUS) / (BUBBLE_RADIUS * 2 * 0.866));
+        SHOOTER_X = gameCanvas.width / 2; SHOOTER_Y = gameCanvas.height - BUBBLE_RADIUS * 1.5;
+        bctx.fillStyle = '#1a0f2e'; bctx.fillRect(0,0, bctx.canvas.width, bctx.canvas.height);
+    }
+    
+    function drawBubble(ctx, x, y, radius, colorKey, scale = 1) {
+        if (scale <= 0) return;
+        const color = COLORS[colorKey];
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        
+        if (colorKey === 's') {
+            const grad = ctx.createRadialGradient(0,0,0,0,0,radius);
+            grad.addColorStop(0, '#a5a0a8'); grad.addColorStop(1, '#635e66');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+        } else {
+            const shineX = -radius * 0.4, shineY = -radius * 0.4;
+            const gradient = ctx.createRadialGradient(shineX, shineY, radius * 0.1, 0, 0, radius);
+            const darkColor = `rgba(${parseInt(color.substr(1,2),16)*0.7}, ${parseInt(color.substr(3,2),16)*0.7}, ${parseInt(color.substr(5,2),16)*0.7}, 1)`;
+            gradient.addColorStop(0, 'rgba(255,255,255,0.9)'); gradient.addColorStop(0.7, color); gradient.addColorStop(1, darkColor);
+            ctx.fillStyle = gradient;
+            ctx.beginPath(); ctx.arc(0, 0, radius - 1, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+    }
+    
+    function drawShooter() {
+        const shooterColor = playerBubble ? COLORS[playerBubble.color] : '#555';
+        gctx.save();
+        gctx.translate(SHOOTER_X, SHOOTER_Y);
+        gctx.rotate(targetAimAngle + Math.PI / 2);
+        gctx.fillStyle = '#889';
+        gctx.beginPath(); gctx.rect(-BUBBLE_RADIUS * 0.4, -BUBBLE_RADIUS * 3, BUBBLE_RADIUS * 0.8, BUBBLE_RADIUS * 3); gctx.fill();
+        gctx.beginPath(); gctx.arc(0, -BUBBLE_RADIUS * 2.5, 8, 0, Math.PI * 2);
+        gctx.fillStyle = shooterColor; gctx.shadowColor = shooterColor; gctx.shadowBlur = 15; gctx.fill();
+        gctx.restore();
+    }
+    
+    function setupLevel() {
+        grid = [];
+        for (let r = 0; r < ROWS; r++) { grid[r] = Array(COLS).fill(null).map((_, c) => ({ status: 0, r, c })); }
+        
+        const levelData = LEVELS[currentLevel - 1];
+        if (levelData) {
+            levelData.layout.forEach((rowStr, r) => {
+                const chars = rowStr.trim().split("");
+                const startC = Math.floor((COLS - chars.length) / 2);
+                chars.forEach((char, c_offset) => {
+                    if (char !== ' ') {
+                        const c = startC + c_offset;
+                        if(c >= 0 && c < COLS) {
+                            grid[r][c] = {
+                                x: c * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS + (r % 2 === 1 ? BUBBLE_RADIUS : 0),
+                                y: r * (BUBBLE_RADIUS * 2 * 0.866) + BUBBLE_RADIUS,
+                                color: char, status: 1, r, c, scale: 0.1
+                            };
+                        }
+                    }
+                });
+            });
+        } else { 
+            showOverlay(true, true);
+            return;
+        }
+        updateStatsDisplay();
+    }
+    
+    function getActiveColors() {
+        const colors = new Set();
+        grid.forEach(row => row.forEach(bubble => {
+            if (bubble.status === 1 && bubble.color !== 's') colors.add(bubble.color);
+        }));
+        return colors.size > 0 ? Array.from(colors) : COLOR_KEYS.slice(0, 3);
+    }
+
+    function createPlayerBubbles() {
+        const activeColors = getActiveColors();
+        playerBubble = { color: activeColors[Math.floor(Math.random() * activeColors.length)] };
+        nextBubble = { color: activeColors[Math.floor(Math.random() * activeColors.length)] };
+    }
+
+    function swapBubbles() {
+        if (isShooting || gameOver) return;
+        swapSound.play();
+        [playerBubble.color, nextBubble.color] = [nextBubble.color, playerBubble.color];
+    }
+    
+    function updateStatsDisplay() {
+        scoreEl.textContent = score;
+        levelEl.textContent = currentLevel;
+    }
+    
+    function popBubbles(bubblesToPop) { 
+        popSound.currentTime = 0; popSound.play(); 
+        bubblesToPop.forEach(bubble => { 
+            if (bubble.status === 1) { 
+                createParticles(bubble.x, bubble.y, COLORS[bubble.color]); 
+                score += 10; 
+                bubble.status = 2; 
+            }
+        });
+        updateStatsDisplay();
+    }
+
+    function dropBubbles(bubblesToDrop) { 
+        bubblesToDrop.forEach(bubble => { 
+            if (bubble.status === 1) { 
+                bubble.status = 0; 
+                fallingBubbles.push({ x: bubble.x, y: bubble.y, color: bubble.color, dy: Math.random() * 2 + 1, dx: Math.random() - 0.5 }); 
+                score += 20; 
+            }
+        });
+        updateStatsDisplay();
+    }
+    
+    function showOverlay(isWin, allLevelsComplete = false) {
+        if(gameOver) return;
+        gameOver = true;
+        overlay.style.display = 'flex';
+        overlayScore.style.display = 'block';
+        overlayButton.style.display = 'block';
+        
+        if (allLevelsComplete) {
+            overlayTitle.textContent = 'অভিনন্দন!';
+            overlayScore.textContent = `আপনি সব লেভেল শেষ করেছেন! মোট স্কোর: ${score}`;
+            overlayButton.textContent = 'পুনরায় খেলুন';
+            overlayButton.dataset.action = 'restart';
+        } else if (isWin) {
+            overlayTitle.textContent = `লেভেল ${currentLevel} সম্পন্ন!`;
+            overlayScore.textContent = `স্কোর: ${score}`;
+            overlayButton.textContent = 'পরবর্তী লেভেল';
+            overlayButton.dataset.action = 'next-level';
+        } else {
+            overlayTitle.textContent = 'গেম ওভার!';
+            overlayScore.textContent = `স্কোর: ${score}`;
+            overlayButton.textContent = 'আবার খেলুন';
+            overlayButton.dataset.action = 'play-again';
+        }
+    }
+
+    function drawGameOverLine() { gctx.beginPath(); gctx.moveTo(0, (ROWS - 2) * (BUBBLE_RADIUS * 2 * 0.866)); gctx.lineTo(gameCanvas.width, (ROWS - 2) * (BUBBLE_RADIUS * 2 * 0.866)); gctx.setLineDash([10, 5]); gctx.strokeStyle = '#e74c3c'; gctx.lineWidth = 3; gctx.stroke(); gctx.setLineDash([]); }
+    function drawHUD() { if (playerBubble) { drawBubble(gctx, SHOOTER_X, SHOOTER_Y, BUBBLE_RADIUS, playerBubble.color); } if (firedBubble) { drawBubble(gctx, firedBubble.x, firedBubble.y, BUBBLE_RADIUS, firedBubble.color); } if (nextBubble) { const uiBarRect = document.getElementById('ui-bar').getBoundingClientRect(); const swapBtnRect = swapBtn.getBoundingClientRect(); const x = swapBtnRect.left + swapBtnRect.width / 2 - uiBarRect.left; const y = SHOOTER_Y; drawBubble(gctx, x, y, BUBBLE_RADIUS * 0.7, nextBubble.color); }}
+    function updateGridAnimations() { grid.forEach(row => row.forEach(bubble => { if (bubble.status === 1 && bubble.scale < 1) { bubble.scale += 0.1; if(bubble.scale > 1) bubble.scale = 1; } if (bubble.status === 2) { bubble.scale -= 0.15; if (bubble.scale <= 0) bubble.status = 0; }}));}
+    function updateFiredBubble() { if (!firedBubble) return; firedBubble.x += firedBubble.dx; firedBubble.y += firedBubble.dy; if (firedBubble.x <= BUBBLE_RADIUS || firedBubble.x >= gameCanvas.width - BUBBLE_RADIUS) { firedBubble.dx *= -1; } if (firedBubble.y <= BUBBLE_RADIUS) { snapBubble(); return; } for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { const b = grid[r][c]; if (b && b.status === 1 && Math.hypot(firedBubble.x - b.x, firedBubble.y - b.y) < BUBBLE_RADIUS * 1.8) { snapBubble(); return; }}}}
+    function snapBubble() { let closestR = -1, closestC = -1, minDist = Infinity; for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (grid[r][c].status === 0) { const x = c * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS + (r % 2 === 1 ? BUBBLE_RADIUS : 0); const y = r * (BUBBLE_RADIUS * 2 * 0.866) + BUBBLE_RADIUS; if(x >= gameCanvas.width - BUBBLE_RADIUS / 2) continue; const dist = Math.hypot(firedBubble.x - x, firedBubble.y - y); if (dist < BUBBLE_RADIUS * 2 && dist < minDist) { minDist = dist; closestR = r; closestC = c; }}}} if (closestR !== -1) { const r = closestR, c = closestC; const newBubble = { x: c * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS + (r % 2 === 1 ? BUBBLE_RADIUS : 0), y: r * (BUBBLE_RADIUS * 2 * 0.866) + BUBBLE_RADIUS, color: firedBubble.color, status: 1, r, c, scale: 0.1 }; grid[r][c] = newBubble; isShooting = false; firedBubble = null; const matched = (newBubble.color !== 's') ? findMatches(r, c) : []; if (matched.length >= 3) { popBubbles(matched); const floating = findFloatingBubbles(); if(floating.length > 0) dropBubbles(floating); shotsSinceRowAdded = 0; } else { shotsSinceRowAdded++; } if (shotsSinceRowAdded >= shotsPerRow && countAllBubbles() > 0) { addNewRow(); shotsSinceRowAdded = 0; } createPlayerBubbles(); checkWinCondition(); checkGameOver(); } else { isShooting = false; firedBubble = null; createPlayerBubbles(); }}
+    function findMatches(startR, startC) { const targetColor = grid[startR][startC].color; if(targetColor === 's') return []; const toProcess = [grid[startR][startC]]; const processed = new Set([`${startR},${startC}`]); const matched = [grid[startR][startC]]; while(toProcess.length > 0) { const current = toProcess.pop(); for(const neighbor of getNeighbors(current.r, current.c)){ const key = `${neighbor.r},${neighbor.c}`; if (neighbor.status === 1 && neighbor.color === targetColor && !processed.has(key)) { processed.add(key); toProcess.push(neighbor); matched.push(neighbor); }}} return matched; }
+    function getNeighbors(r, c) { const isOddRow = r % 2 === 1; const offsets = isOddRow ? [[0,-1], [0,1], [-1,0], [-1,1], [1,0], [1,1]] : [[0,-1], [0,1], [-1,-1], [-1,0], [1,-1], [1,0]]; const neighbors = []; for(const [dr, dc] of offsets) { const nr = r + dr, nc = c + dc; if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && grid[nr] && grid[nr][nc]) { neighbors.push(grid[nr][nc]); } } return neighbors; }
+    function findFloatingBubbles() { const connected = new Set(); const toProcess = []; for (let c = 0; c < COLS; c++) { if (grid[0][c] && grid[0][c].status === 1) { connected.add(`0,${c}`); toProcess.push(grid[0][c]); }} while (toProcess.length > 0) { const current = toProcess.pop(); for (const neighbor of getNeighbors(current.r, current.c)) { if (neighbor && neighbor.status === 1 && !connected.has(`${neighbor.r},${neighbor.c}`)) { connected.add(`${neighbor.r},${neighbor.c}`); toProcess.push(neighbor); }}} const floating = []; for (let r = 0; r < ROWS; r++) { for (let c = 0; c < COLS; c++) { if (grid[r][c] && grid[r][c].status === 1 && !connected.has(`${r},${c}`)) { floating.push(grid[r][c]); }}} return floating; }
+    function addNewRow() { for (let r = ROWS - 1; r > 0; r--) { for (let c = 0; c < COLS; c++) { grid[r][c] = grid[r-1][c]; if(grid[r][c].status !== 0){ grid[r][c].r = r; grid[r][c].y = r * (BUBBLE_RADIUS * 2 * 0.866) + BUBBLE_RADIUS; }}} const activeColors = getActiveColors(); for (let c = 0; c < COLS; c++) { const x = c * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS; if (x >= gameCanvas.width - BUBBLE_RADIUS / 2) { grid[0][c] = { status: 0, r: 0, c }; continue; } let colorKey = activeColors[Math.floor(Math.random() * activeColors.length)]; grid[0][c] = { x, y: BUBBLE_RADIUS, color: colorKey, status: 1, r: 0, c, scale: 1 }; }}
+    function countAllBubbles() { return grid.flat().filter(b => b && b.status === 1).length; }
+    function checkGameOver() { if(gameOver) return; for (let c = 0; c < COLS; c++) { if (grid[ROWS-1][c] && grid[ROWS-1][c].status === 1) { showOverlay(false); return; }}}
+    function checkWinCondition() { if (countAllBubbles() === 0 && !gameOver) { showOverlay(true); }}
+    function createParticles(x, y, color) { for (let i = 0; i < 15; i++) { particles.push({ x, y, color, dx: (Math.random() - 0.5) * 8, dy: (Math.random() - 0.5) * 8, radius: Math.random() * 3 + 2, life: 30 }); }}
+    function updateParticles() { for (let i = particles.length - 1; i >= 0; i--) { const p = particles[i]; p.x += p.dx; p.y += p.dy; p.life--; p.radius *= 0.98; if (p.life <= 0) particles.splice(i, 1); }}
+    function drawParticles() { particles.forEach(p => { gctx.beginPath(); gctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); gctx.fillStyle = p.color; gctx.globalAlpha = p.life / 30; gctx.fill(); gctx.globalAlpha = 1.0; }); }
+    function updateFallingBubbles() { for (let i = fallingBubbles.length - 1; i >= 0; i--) { const fb = fallingBubbles[i]; fb.y += fb.dy; fb.x += fb.dx; fb.dy += 0.1; if (fb.y > gameCanvas.height + BUBBLE_RADIUS) fallingBubbles.splice(i, 1); }}
+    function drawFallingBubbles() { fallingBubbles.forEach(fb => { drawBubble(gctx, fb.x, fb.y, BUBBLE_RADIUS, fb.color); }); }
+    function drawGrid() { grid.forEach(row => row.forEach(bubble => { if (bubble && bubble.status > 0) { drawBubble(gctx, bubble.x, bubble.y, BUBBLE_RADIUS, bubble.color, bubble.scale); }}));}
+
+    init();
+</script>
+</body>
+</html>
