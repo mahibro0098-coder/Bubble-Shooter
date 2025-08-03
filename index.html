@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>বাবল শুটার - লেভেল সংস্করণ</title>
+    <!-- GigaPub Ad Script -->
+    <script src="https://ad.gigapub.tech/script?id=1168"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&display=swap');
         :root {
@@ -236,14 +238,47 @@
         drawShooter(); drawHUD(); drawAimLine(); drawGameOverLine();
     }
 
-    function handleOverlayClick() {
-        if (overlayButton.dataset.action === 'next-level') {
-            currentLevel++;
-            showLevelStartScreen();
+    // --- NEW FUNCTION TO SHOW ADS ---
+    function showAdAndThen(callback) {
+        console.log("Attempting to show ad...");
+        // Check if the ad function from the script is available
+        if (typeof window.showGiga === 'function') {
+            window.showGiga()
+              .then(() => {
+                // Ad was shown successfully, now run the game logic
+                console.log("Ad finished. Running game logic.");
+                callback();
+              })
+              .catch(e => {
+                // An error occurred, maybe ad blocked or network issue
+                console.error("Ad failed to show:", e);
+                // Run the game logic anyway so the player is not stuck
+                callback();
+              });
         } else {
-            score = 0;
-            currentLevel = 1;
-            startGame();
+            console.log("Ad function 'showGiga' not found. Skipping ad.");
+            // If the ad script didn't load, just run the game logic
+            callback();
+        }
+    }
+
+    // --- MODIFIED FUNCTION TO HANDLE OVERLAY BUTTON CLICKS ---
+    function handleOverlayClick() {
+        const action = overlayButton.dataset.action;
+
+        if (action === 'next-level') {
+            // Show ad, and then proceed to the next level
+            showAdAndThen(() => {
+                currentLevel++;
+                showLevelStartScreen();
+            });
+        } else if (action === 'play-again' || action === 'restart') {
+            // Show ad, and then restart the game from the beginning
+            showAdAndThen(() => {
+                score = 0;
+                currentLevel = 1;
+                startGame();
+            });
         }
     }
 
