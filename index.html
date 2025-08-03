@@ -63,7 +63,7 @@
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7);
             color: white; display: none; justify-content: center; align-items: center;
-            flex-direction: column; text-align: center; z-index: 10;
+            flex-direction: column; text-align: center; z-index: 10; padding: 20px;
         }
         #overlay h2 { font-size: clamp(2.5em, 10vw, 4em); text-shadow: 3px 3px 8px #000; margin: 0; }
         #overlay p { font-size: clamp(1em, 5vw, 1.5em); margin: 10px 0 20px 0; }
@@ -82,6 +82,7 @@
                 <div id="game-stats">
                     <div>স্কোর: <span id="score-val">0</span></div>
                     <div>লেভেল: <span id="level-val">1</span></div>
+                    <div>প্লে বাকি: <span id="plays-left-val">0</span></div>
                 </div>
                 <canvas id="backgroundCanvas"></canvas>
                 <canvas id="gameCanvas"></canvas>
@@ -102,6 +103,7 @@
     </div>
 
 <script>
+    // --- Existing Game Elements ---
     const gameCanvas = document.getElementById('gameCanvas'), gctx = gameCanvas.getContext('2d');
     const backgroundCanvas = document.getElementById('backgroundCanvas'), bctx = backgroundCanvas.getContext('2d');
     const gameContainer = document.getElementById('game-container');
@@ -109,6 +111,11 @@
     const overlay = document.getElementById('overlay'), overlayTitle = document.getElementById('overlay-title');
     const overlayScore = document.getElementById('overlay-score'), overlayButton = document.getElementById('overlay-button');
     const scoreEl = document.getElementById('score-val'), levelEl = document.getElementById('level-val');
+    
+    // --- NEW: Play Limit Elements & Variables ---
+    const playsLeftEl = document.getElementById('plays-left-val');
+    const MAX_PLAYS = 50;
+    const RESET_HOUR_BST = 11; // 11 AM in Bangladesh Standard Time
 
     let BUBBLE_RADIUS, COLS, ROWS, SHOOTER_X, SHOOTER_Y;
     const BASE_COLS = 11, BUBBLE_SPEED_FACTOR = 0.4;
@@ -125,155 +132,121 @@
 
     let grid, playerBubble, nextBubble, firedBubble;
     let score = 0, currentLevel = 1;
-    let isShooting = false, gameOver = false, isAiming = false; // New state: isAiming
+    let isShooting = false, gameOver = false, isAiming = false;
     let targetAimAngle = -Math.PI / 2;
     let shotsSinceRowAdded = 0, shotsPerRow = 5;
     let particles = [], fallingBubbles = [];
     let animationFrameId;
 
-    // Sounds (unchanged)
+    // --- NEW: Play Limit Variables ---
+    let playsLeft = 0;
+    let lastResetDate = null;
+
+    // --- SOUNDS (Unchanged) ---
     const popSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU3LjgyLjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAA//uQZAU8AAAACAAADSAAAAQARgAm கிடைத்தது//uQZAUoAAAAEAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AD/gcAZs//uQZAikgAAAACAAADSAAAAQARgAmAAAA//uQZAgsgAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MGs//uQZAg4gAAAAAIAAANIAAAAQARgAmAAAA//uQZAgogAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MAB//uQZAe8gAAAAAIAAANIAAAAQARgAmAAAA//uQZAe0gAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gb8R4MAB");
     const shootSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU3LjgyLjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAA//uQZAU8AAAACAAADSAAAAQARgAm கிடைத்தது//uQZAUoAAAAEAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AD/gcAZs//uQZAikgAAAACAAADSAAAAQARgAmAAAA//uQZAgsgAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MGs//uQZAg4gAAAAAIAAANIAAAAQARgAmAAAA//uQZAgogAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MAB//uQZAe8gAAAAAIAAANIAAAAQARgAmAAAA//uQZAe0gAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gb8R4MAB");
     const swapSound = new Audio("data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU3LjgyLjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAA//uQZAU8AAAACAAADSAAAAQARgAm கிடைத்தது//uQZAUoAAAAEAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AD/gcAZs//uQZAikgAAAACAAADSAAAAQARgAmAAAA//uQZAgsgAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MGs//uQZAg4gAAAAAIAAANIAAAAQARgAmAAAA//uQZAgogAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gf8R4MAB//uQZAe8gAAAAAIAAANIAAAAQARgAmAAAA//uQZAe0gAAAAQAAAAIAAANIAAAAQAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/AAD/gb8R4MAB");
     popSound.volume = 0.5; shootSound.volume = 0.2; swapSound.volume = 0.2;
+    
+    // --- NEW: Play Limit Management Functions ---
+    function checkAndResetPlays() {
+        const now = new Date();
+        const bstTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
 
+        const lastReset = localStorage.getItem('lastResetDate');
+        let needsReset = !lastReset; // Reset if no date is stored
+
+        if (lastReset) {
+            const lastResetTime = new Date(lastReset);
+            
+            // Check if the current time is past 11 AM today
+            const resetTimeToday = new Date(lastResetTime);
+            resetTimeToday.setHours(RESET_HOUR_BST, 0, 0, 0);
+            
+            // If last reset was before today's reset time
+            if(bstTime >= resetTimeToday && lastResetTime < resetTimeToday) {
+                 needsReset = true;
+            }
+            // If it's a new day
+            if (bstTime.getDate() !== lastResetTime.getDate() && bstTime > lastResetTime) {
+                if (bstTime.getHours() >= RESET_HOUR_BST) {
+                    needsReset = true;
+                }
+            }
+        }
+        
+        if (needsReset) {
+            playsLeft = MAX_PLAYS;
+            localStorage.setItem('playsLeft', playsLeft);
+            localStorage.setItem('lastResetDate', bstTime.toISOString());
+            console.log('Plays reset to 50.');
+        } else {
+            playsLeft = parseInt(localStorage.getItem('playsLeft') || MAX_PLAYS, 10);
+        }
+        updatePlaysDisplay();
+    }
+
+    function updatePlaysDisplay() {
+        playsLeftEl.textContent = playsLeft;
+    }
+    
+    function useOnePlay() {
+        if (playsLeft > 0) {
+            playsLeft--;
+            localStorage.setItem('playsLeft', playsLeft);
+            updatePlaysDisplay();
+            return true;
+        }
+        return false;
+    }
+
+    // --- MODIFIED init() Function ---
     function init() {
         resizeGame();
         bctx.fillStyle = '#1a0f2e'; bctx.fillRect(0,0, bctx.canvas.width, bctx.canvas.height);
         
-        startGame();
+        checkAndResetPlays(); // Check plays on startup
         
-        // NEW Event Listeners for Drag-and-Release
+        if (playsLeft > 0) {
+            startGame();
+        } else {
+            showNoPlaysOverlay();
+        }
+        
         gameContainer.addEventListener('pointerdown', handleAimStart);
         gameContainer.addEventListener('pointermove', handleAimMove);
         gameContainer.addEventListener('pointerup', handleAimEnd);
-        gameContainer.addEventListener('pointerleave', handleAimEnd); // Handle leaving the screen
+        gameContainer.addEventListener('pointerleave', handleAimEnd);
 
         window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 's') swapBubbles(); });
-        restartBtn.addEventListener('click', () => { score = 0; currentLevel = 1; startGame(); });
+        restartBtn.addEventListener('click', () => {
+             if (playsLeft > 0) {
+                score = 0; currentLevel = 1; startGame();
+             } else {
+                showNoPlaysOverlay();
+             }
+        });
         swapBtn.addEventListener('click', swapBubbles);
         overlayButton.addEventListener('click', handleOverlayClick);
         window.addEventListener('resize', resizeGame);
     }
     
-    // NEW CONTROL HANDLERS
-    function handleAimStart(e) {
-        if (gameOver || isShooting || e.target.closest('#ui-bar')) return;
-        isAiming = true;
-        updateAimAngle(e);
-    }
-
-    function handleAimMove(e) {
-        if (!isAiming) return;
-        updateAimAngle(e);
-    }
-
-    function handleAimEnd(e) {
-        if (!isAiming) return;
-        isAiming = false;
-        shootBubble();
-    }
-    
-    function updateAimAngle(e) {
-        const rect = gameCanvas.getBoundingClientRect();
-        const pointerX = e.clientX - rect.left;
-        const pointerY = e.clientY - rect.top;
-
-        if (pointerY > SHOOTER_Y) return;
-
-        const angle = Math.atan2(pointerY - SHOOTER_Y, pointerX - SHOOTER_X);
-        targetAimAngle = Math.max(-Math.PI + 0.1, Math.min(-0.1, angle));
-    }
-
-    // UPDATED Aim Line Drawing
-    function drawAimLine() {
-        if (isShooting || !playerBubble || !isAiming) return; // Only draw when aiming
-        gctx.save();
-        
-        const previewBubble = {x: SHOOTER_X, y: SHOOTER_Y, dx: Math.cos(targetAimAngle), dy: Math.sin(targetAimAngle)};
-        
-        // Dotted line
-        gctx.beginPath();
-        gctx.moveTo(SHOOTER_X, SHOOTER_Y);
-        gctx.lineTo(SHOOTER_X + previewBubble.dx * 1000, SHOOTER_Y + previewBubble.dy * 1000);
-        gctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-        gctx.lineWidth = 2;
-        gctx.setLineDash([4, 8]);
-        gctx.stroke();
-        gctx.setLineDash([]);
-        
-        gctx.restore();
-    }
-    
-    function shootBubble() {
-        if (isShooting || gameOver || !playerBubble) return;
-        isShooting = true;
-        shootSound.play();
-        const speed = BUBBLE_RADIUS * BUBBLE_SPEED_FACTOR;
-        firedBubble = {
-            x: SHOOTER_X, y: SHOOTER_Y, color: playerBubble.color,
-            dx: Math.cos(targetAimAngle) * speed,
-            dy: Math.sin(targetAimAngle) * speed
-        };
-        playerBubble = null;
-    }
-    
-    function startGame() {
-        if(animationFrameId) cancelAnimationFrame(animationFrameId);
-        gameOver = false; isShooting = false; isAiming = false; firedBubble = null;
-        particles = []; fallingBubbles = []; shotsSinceRowAdded = 0;
-        targetAimAngle = -Math.PI / 2;
-        overlay.style.display = 'none';
-        setupLevel(); 
-        createPlayerBubbles(); 
-        gameLoop();
-    }
-    
-    function gameLoop() {
-        animationFrameId = requestAnimationFrame(gameLoop);
-        updateFiredBubble(); updateGridAnimations();
-        updateFallingBubbles(); updateParticles();
-        gctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
-        drawGrid(); drawFallingBubbles(); drawParticles();
-        drawShooter(); drawHUD(); drawAimLine(); drawGameOverLine();
-    }
-
-    // --- NEW FUNCTION TO SHOW ADS ---
-    function showAdAndThen(callback) {
-        console.log("Attempting to show ad...");
-        // Check if the ad function from the script is available
-        if (typeof window.showGiga === 'function') {
-            window.showGiga()
-              .then(() => {
-                // Ad was shown successfully, now run the game logic
-                console.log("Ad finished. Running game logic.");
-                callback();
-              })
-              .catch(e => {
-                // An error occurred, maybe ad blocked or network issue
-                console.error("Ad failed to show:", e);
-                // Run the game logic anyway so the player is not stuck
-                callback();
-              });
-        } else {
-            console.log("Ad function 'showGiga' not found. Skipping ad.");
-            // If the ad script didn't load, just run the game logic
-            callback();
-        }
-    }
-
-    // --- MODIFIED FUNCTION TO HANDLE OVERLAY BUTTON CLICKS ---
+    // --- MODIFIED Overlay Click Handler ---
     function handleOverlayClick() {
+        checkAndResetPlays(); // Re-check before starting a new game
         const action = overlayButton.dataset.action;
 
+        if (playsLeft <= 0 && action !== 'no-plays') {
+            showNoPlaysOverlay();
+            return;
+        }
+
         if (action === 'next-level') {
-            // Show ad, and then proceed to the next level
             showAdAndThen(() => {
                 currentLevel++;
                 showLevelStartScreen();
             });
         } else if (action === 'play-again' || action === 'restart') {
-            // Show ad, and then restart the game from the beginning
             showAdAndThen(() => {
                 score = 0;
                 currentLevel = 1;
@@ -281,144 +254,38 @@
             });
         }
     }
-
-    function showLevelStartScreen() {
-        overlayTitle.textContent = `লেভেল ${currentLevel}`;
-        overlayScore.style.display = 'none';
-        overlayButton.style.display = 'none';
+    
+    // --- NEW Function to show "No Plays Left" overlay ---
+    function showNoPlaysOverlay() {
+        gameOver = true; // Prevents other actions
         overlay.style.display = 'flex';
-        setTimeout(() => {
-            startGame();
-        }, 1500);
-    }
-    
-    // --- All other functions (game logic, drawing, etc.) remain mostly the same ---
-    
-    function resizeGame() {
-        const rect = gameContainer.getBoundingClientRect();
-        gameCanvas.width = backgroundCanvas.width = rect.width;
-        gameCanvas.height = backgroundCanvas.height = rect.height * 0.85; // canvas container height
-        COLS = BASE_COLS; BUBBLE_RADIUS = gameCanvas.width / (COLS * 2);
-        ROWS = Math.floor((gameCanvas.height - BUBBLE_RADIUS) / (BUBBLE_RADIUS * 2 * 0.866));
-        SHOOTER_X = gameCanvas.width / 2; SHOOTER_Y = gameCanvas.height - BUBBLE_RADIUS * 1.5;
-        bctx.fillStyle = '#1a0f2e'; bctx.fillRect(0,0, bctx.canvas.width, bctx.canvas.height);
-    }
-    
-    function drawBubble(ctx, x, y, radius, colorKey, scale = 1) {
-        if (scale <= 0) return;
-        const color = COLORS[colorKey];
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.scale(scale, scale);
+        overlayScore.style.display = 'block';
+        overlayButton.style.display = 'none'; // Hide button initially
         
-        if (colorKey === 's') {
-            const grad = ctx.createRadialGradient(0,0,0,0,0,radius);
-            grad.addColorStop(0, '#a5a0a8'); grad.addColorStop(1, '#635e66');
-            ctx.fillStyle = grad;
-            ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
-        } else {
-            const shineX = -radius * 0.4, shineY = -radius * 0.4;
-            const gradient = ctx.createRadialGradient(shineX, shineY, radius * 0.1, 0, 0, radius);
-            const darkColor = `rgba(${parseInt(color.substr(1,2),16)*0.7}, ${parseInt(color.substr(3,2),16)*0.7}, ${parseInt(color.substr(5,2),16)*0.7}, 1)`;
-            gradient.addColorStop(0, 'rgba(255,255,255,0.9)'); gradient.addColorStop(0.7, color); gradient.addColorStop(1, darkColor);
-            ctx.fillStyle = gradient;
-            ctx.beginPath(); ctx.arc(0, 0, radius - 1, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.restore();
-    }
-    
-    function drawShooter() {
-        const shooterColor = playerBubble ? COLORS[playerBubble.color] : '#555';
-        gctx.save();
-        gctx.translate(SHOOTER_X, SHOOTER_Y);
-        gctx.rotate(targetAimAngle + Math.PI / 2);
-        gctx.fillStyle = '#889';
-        gctx.beginPath(); gctx.rect(-BUBBLE_RADIUS * 0.4, -BUBBLE_RADIUS * 3, BUBBLE_RADIUS * 0.8, BUBBLE_RADIUS * 3); gctx.fill();
-        gctx.beginPath(); gctx.arc(0, -BUBBLE_RADIUS * 2.5, 8, 0, Math.PI * 2);
-        gctx.fillStyle = shooterColor; gctx.shadowColor = shooterColor; gctx.shadowBlur = 15; gctx.fill();
-        gctx.restore();
-    }
-    
-    function setupLevel() {
-        grid = [];
-        for (let r = 0; r < ROWS; r++) { grid[r] = Array(COLS).fill(null).map((_, c) => ({ status: 0, r, c })); }
+        overlayTitle.textContent = 'আর খেলা যাবে না';
         
-        const levelData = LEVELS[currentLevel - 1];
-        if (levelData) {
-            levelData.layout.forEach((rowStr, r) => {
-                const chars = rowStr.trim().split("");
-                const startC = Math.floor((COLS - chars.length) / 2);
-                chars.forEach((char, c_offset) => {
-                    if (char !== ' ') {
-                        const c = startC + c_offset;
-                        if(c >= 0 && c < COLS) {
-                            grid[r][c] = {
-                                x: c * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS + (r % 2 === 1 ? BUBBLE_RADIUS : 0),
-                                y: r * (BUBBLE_RADIUS * 2 * 0.866) + BUBBLE_RADIUS,
-                                color: char, status: 1, r, c, scale: 0.1
-                            };
-                        }
-                    }
-                });
-            });
-        } else { 
-            showOverlay(true, true);
-            return;
+        const now = new Date();
+        const bstTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
+        let nextResetTime = new Date(bstTime);
+        nextResetTime.setHours(RESET_HOUR_BST, 0, 0, 0);
+
+        if (bstTime.getHours() >= RESET_HOUR_BST) {
+            nextResetTime.setDate(nextResetTime.getDate() + 1);
         }
-        updateStatsDisplay();
-    }
-    
-    function getActiveColors() {
-        const colors = new Set();
-        grid.forEach(row => row.forEach(bubble => {
-            if (bubble.status === 1 && bubble.color !== 's') colors.add(bubble.color);
-        }));
-        return colors.size > 0 ? Array.from(colors) : COLOR_KEYS.slice(0, 3);
+
+        const formattedTime = nextResetTime.toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' });
+        overlayScore.innerHTML = `আপনার আজকের খেলার সুযোগ শেষ। <br>আবার খেলার সুযোগ আসবে আগামীকাল সকাল ${formattedTime} টায়।`;
+        overlayButton.dataset.action = 'no-plays';
     }
 
-    function createPlayerBubbles() {
-        const activeColors = getActiveColors();
-        playerBubble = { color: activeColors[Math.floor(Math.random() * activeColors.length)] };
-        nextBubble = { color: activeColors[Math.floor(Math.random() * activeColors.length)] };
-    }
 
-    function swapBubbles() {
-        if (isShooting || gameOver) return;
-        swapSound.play();
-        [playerBubble.color, nextBubble.color] = [nextBubble.color, playerBubble.color];
-    }
-    
-    function updateStatsDisplay() {
-        scoreEl.textContent = score;
-        levelEl.textContent = currentLevel;
-    }
-    
-    function popBubbles(bubblesToPop) { 
-        popSound.currentTime = 0; popSound.play(); 
-        bubblesToPop.forEach(bubble => { 
-            if (bubble.status === 1) { 
-                createParticles(bubble.x, bubble.y, COLORS[bubble.color]); 
-                score += 10; 
-                bubble.status = 2; 
-            }
-        });
-        updateStatsDisplay();
-    }
-
-    function dropBubbles(bubblesToDrop) { 
-        bubblesToDrop.forEach(bubble => { 
-            if (bubble.status === 1) { 
-                bubble.status = 0; 
-                fallingBubbles.push({ x: bubble.x, y: bubble.y, color: bubble.color, dy: Math.random() * 2 + 1, dx: Math.random() - 0.5 }); 
-                score += 20; 
-            }
-        });
-        updateStatsDisplay();
-    }
-    
+    // --- MODIFIED showOverlay to decrement plays ---
     function showOverlay(isWin, allLevelsComplete = false) {
         if(gameOver) return;
+        
+        useOnePlay(); // Decrement play count when game ends
         gameOver = true;
+
         overlay.style.display = 'flex';
         overlayScore.style.display = 'block';
         overlayButton.style.display = 'block';
@@ -441,6 +308,45 @@
         }
     }
 
+
+    // --- All other game logic functions remain the same or with minor changes ---
+    
+    function startGame() {
+        checkAndResetPlays();
+        if (playsLeft <= 0) {
+            showNoPlaysOverlay();
+            return;
+        }
+        if(animationFrameId) cancelAnimationFrame(animationFrameId);
+        gameOver = false; isShooting = false; isAiming = false; firedBubble = null;
+        particles = []; fallingBubbles = []; shotsSinceRowAdded = 0;
+        targetAimAngle = -Math.PI / 2;
+        overlay.style.display = 'none';
+        setupLevel(); 
+        createPlayerBubbles(); 
+        updateStatsDisplay();
+        gameLoop();
+    }
+    
+    function handleAimStart(e) { if (gameOver || isShooting || e.target.closest('#ui-bar')) return; isAiming = true; updateAimAngle(e); }
+    function handleAimMove(e) { if (!isAiming) return; updateAimAngle(e); }
+    function handleAimEnd(e) { if (!isAiming) return; isAiming = false; shootBubble(); }
+    function updateAimAngle(e) { const rect = gameCanvas.getBoundingClientRect(); const pointerX = e.clientX - rect.left; const pointerY = e.clientY - rect.top; if (pointerY > SHOOTER_Y) return; const angle = Math.atan2(pointerY - SHOOTER_Y, pointerX - SHOOTER_X); targetAimAngle = Math.max(-Math.PI + 0.1, Math.min(-0.1, angle)); }
+    function drawAimLine() { if (isShooting || !playerBubble || !isAiming) return; gctx.save(); const previewBubble = {x: SHOOTER_X, y: SHOOTER_Y, dx: Math.cos(targetAimAngle), dy: Math.sin(targetAimAngle)}; gctx.beginPath(); gctx.moveTo(SHOOTER_X, SHOOTER_Y); gctx.lineTo(SHOOTER_X + previewBubble.dx * 1000, SHOOTER_Y + previewBubble.dy * 1000); gctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; gctx.lineWidth = 2; gctx.setLineDash([4, 8]); gctx.stroke(); gctx.setLineDash([]); gctx.restore(); }
+    function shootBubble() { if (isShooting || gameOver || !playerBubble) return; isShooting = true; shootSound.play(); const speed = BUBBLE_RADIUS * BUBBLE_SPEED_FACTOR; firedBubble = { x: SHOOTER_X, y: SHOOTER_Y, color: playerBubble.color, dx: Math.cos(targetAimAngle) * speed, dy: Math.sin(targetAimAngle) * speed }; playerBubble = null; }
+    function gameLoop() { animationFrameId = requestAnimationFrame(gameLoop); updateFiredBubble(); updateGridAnimations(); updateFallingBubbles(); updateParticles(); gctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height); drawGrid(); drawFallingBubbles(); drawParticles(); drawShooter(); drawHUD(); drawAimLine(); drawGameOverLine(); }
+    function showAdAndThen(callback) { console.log("Attempting to show ad..."); if (typeof window.showGiga === 'function') { window.showGiga().then(() => { console.log("Ad finished. Running game logic."); callback(); }).catch(e => { console.error("Ad failed to show:", e); callback(); }); } else { console.log("Ad function 'showGiga' not found. Skipping ad."); callback(); } }
+    function showLevelStartScreen() { overlayTitle.textContent = `লেভেল ${currentLevel}`; overlayScore.style.display = 'none'; overlayButton.style.display = 'none'; overlay.style.display = 'flex'; setTimeout(() => { startGame(); }, 1500); }
+    function resizeGame() { const rect = gameContainer.getBoundingClientRect(); gameCanvas.width = backgroundCanvas.width = rect.width; gameCanvas.height = backgroundCanvas.height = rect.height * 0.85; COLS = BASE_COLS; BUBBLE_RADIUS = gameCanvas.width / (COLS * 2); ROWS = Math.floor((gameCanvas.height - BUBBLE_RADIUS) / (BUBBLE_RADIUS * 2 * 0.866)); SHOOTER_X = gameCanvas.width / 2; SHOOTER_Y = gameCanvas.height - BUBBLE_RADIUS * 1.5; bctx.fillStyle = '#1a0f2e'; bctx.fillRect(0,0, bctx.canvas.width, bctx.canvas.height); }
+    function drawBubble(ctx, x, y, radius, colorKey, scale = 1) { if (scale <= 0) return; const color = COLORS[colorKey]; ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); if (colorKey === 's') { const grad = ctx.createRadialGradient(0,0,0,0,0,radius); grad.addColorStop(0, '#a5a0a8'); grad.addColorStop(1, '#635e66'); ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill(); } else { const shineX = -radius * 0.4, shineY = -radius * 0.4; const gradient = ctx.createRadialGradient(shineX, shineY, radius * 0.1, 0, 0, radius); const darkColor = `rgba(${parseInt(color.substr(1,2),16)*0.7}, ${parseInt(color.substr(3,2),16)*0.7}, ${parseInt(color.substr(5,2),16)*0.7}, 1)`; gradient.addColorStop(0, 'rgba(255,255,255,0.9)'); gradient.addColorStop(0.7, color); gradient.addColorStop(1, darkColor); ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, radius - 1, 0, Math.PI * 2); ctx.fill(); } ctx.restore(); }
+    function drawShooter() { const shooterColor = playerBubble ? COLORS[playerBubble.color] : '#555'; gctx.save(); gctx.translate(SHOOTER_X, SHOOTER_Y); gctx.rotate(targetAimAngle + Math.PI / 2); gctx.fillStyle = '#889'; gctx.beginPath(); gctx.rect(-BUBBLE_RADIUS * 0.4, -BUBBLE_RADIUS * 3, BUBBLE_RADIUS * 0.8, BUBBLE_RADIUS * 3); gctx.fill(); gctx.beginPath(); gctx.arc(0, -BUBBLE_RADIUS * 2.5, 8, 0, Math.PI * 2); gctx.fillStyle = shooterColor; gctx.shadowColor = shooterColor; gctx.shadowBlur = 15; gctx.fill(); gctx.restore(); }
+    function setupLevel() { grid = []; for (let r = 0; r < ROWS; r++) { grid[r] = Array(COLS).fill(null).map((_, c) => ({ status: 0, r, c })); } const levelData = LEVELS[currentLevel - 1]; if (levelData) { levelData.layout.forEach((rowStr, r) => { const chars = rowStr.trim().split(""); const startC = Math.floor((COLS - chars.length) / 2); chars.forEach((char, c_offset) => { if (char !== ' ') { const c = startC + c_offset; if(c >= 0 && c < COLS) { grid[r][c] = { x: c * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS + (r % 2 === 1 ? BUBBLE_RADIUS : 0), y: r * (BUBBLE_RADIUS * 2 * 0.866) + BUBBLE_RADIUS, color: char, status: 1, r, c, scale: 0.1 }; } } }); }); } else { showOverlay(true, true); return; } updateStatsDisplay(); }
+    function getActiveColors() { const colors = new Set(); grid.forEach(row => row.forEach(bubble => { if (bubble.status === 1 && bubble.color !== 's') colors.add(bubble.color); })); return colors.size > 0 ? Array.from(colors) : COLOR_KEYS.slice(0, 3); }
+    function createPlayerBubbles() { const activeColors = getActiveColors(); playerBubble = { color: activeColors[Math.floor(Math.random() * activeColors.length)] }; nextBubble = { color: activeColors[Math.floor(Math.random() * activeColors.length)] }; }
+    function swapBubbles() { if (isShooting || gameOver) return; swapSound.play(); [playerBubble.color, nextBubble.color] = [nextBubble.color, playerBubble.color]; }
+    function updateStatsDisplay() { scoreEl.textContent = score; levelEl.textContent = currentLevel; playsLeftEl.textContent = playsLeft; }
+    function popBubbles(bubblesToPop) { popSound.currentTime = 0; popSound.play(); bubblesToPop.forEach(bubble => { if (bubble.status === 1) { createParticles(bubble.x, bubble.y, COLORS[bubble.color]); score += 10; bubble.status = 2; }}); updateStatsDisplay(); }
+    function dropBubbles(bubblesToDrop) { bubblesToDrop.forEach(bubble => { if (bubble.status === 1) { bubble.status = 0; fallingBubbles.push({ x: bubble.x, y: bubble.y, color: bubble.color, dy: Math.random() * 2 + 1, dx: Math.random() - 0.5 }); score += 20; }}); updateStatsDisplay(); }
     function drawGameOverLine() { gctx.beginPath(); gctx.moveTo(0, (ROWS - 2) * (BUBBLE_RADIUS * 2 * 0.866)); gctx.lineTo(gameCanvas.width, (ROWS - 2) * (BUBBLE_RADIUS * 2 * 0.866)); gctx.setLineDash([10, 5]); gctx.strokeStyle = '#e74c3c'; gctx.lineWidth = 3; gctx.stroke(); gctx.setLineDash([]); }
     function drawHUD() { if (playerBubble) { drawBubble(gctx, SHOOTER_X, SHOOTER_Y, BUBBLE_RADIUS, playerBubble.color); } if (firedBubble) { drawBubble(gctx, firedBubble.x, firedBubble.y, BUBBLE_RADIUS, firedBubble.color); } if (nextBubble) { const uiBarRect = document.getElementById('ui-bar').getBoundingClientRect(); const swapBtnRect = swapBtn.getBoundingClientRect(); const x = swapBtnRect.left + swapBtnRect.width / 2 - uiBarRect.left; const y = SHOOTER_Y; drawBubble(gctx, x, y, BUBBLE_RADIUS * 0.7, nextBubble.color); }}
     function updateGridAnimations() { grid.forEach(row => row.forEach(bubble => { if (bubble.status === 1 && bubble.scale < 1) { bubble.scale += 0.1; if(bubble.scale > 1) bubble.scale = 1; } if (bubble.status === 2) { bubble.scale -= 0.15; if (bubble.scale <= 0) bubble.status = 0; }}));}
